@@ -1,0 +1,17 @@
+*.log*
+.DS_Store
+._.DS_Store
+.nyc_output/
+coverage/
+dist/
+node_modules/
+tmp/
+dist/
+
+# Visual Studio Code
+launch.json
+*.code-workspace
+
+# Vim
+.*.sw[a-z]
+*.js
