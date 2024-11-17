@@ -3,8 +3,7 @@
 // This module exports a function that connects to SSB and returns an interface
 // to call methods over MuxRPC. It's a thin wrapper around SSB-Client, which is
 // a thin wrapper around the MuxRPC module.
-
-import { promisify } from "util";
+import caps from 'ssb-caps';
 import ssbClient from "ssb-client";
 import ssbConfig from "ssb-config";
 import ssbKeys from "ssb-keys";
@@ -14,6 +13,8 @@ import lodash from "lodash";
 import fs from "fs";
 import os from "os";
 import flotilla from "./flotilla";
+import Config from 'ssb-config/inject';
+import minimist from 'minimist';
 
 const debug = debugRun("oasis");
 
@@ -109,6 +110,7 @@ const ensureConnection = (customConfig) => {
           })
           .catch(() => {
             serverHandle = flotilla(customConfig);
+			console.log("the serverHandle from flotilla", serverHandle.db)
             attemptConnection()
               .then(resolve)
               .catch((e) => {
@@ -130,9 +132,63 @@ export default ({ offline }) => {
     log("Offline mode activated - not connecting to scuttlebutt peers or pubs");
   }
 
-  // Make a copy of `ssbConfig` to avoid mutating.
-  const customConfig = JSON.parse(JSON.stringify(ssbConfig));
+  
 
+  var baseConfig = Config("ssb", {})
+	var config = {
+		...baseConfig,
+		global: {
+			keys: baseConfig.keys,
+			appKey: caps.shs
+		},
+		replicationScheduler: {
+		"autostart": true,
+		"partialReplication": null
+		},
+		friends: {
+		"dunbar": 10,
+		"hops": 1
+		},
+		conn: {
+		"autostart": true,
+		"incoming": {
+			"net": [
+			{ "scope": ["public"], "transform": "shs", "port": 8008 },
+			{ "scope": ["device"], "transform": "shs", "port": 8008 }
+			],
+			"tunnel": [
+			{
+				"scope": ["public"],
+				"transform": "shs",
+				"portal": "@1wOEiCjJJ0nEs1OABUIV20valZ1LHUsfHJY/ivBoM8Y=.ed25519"
+			}
+			],
+			"onion": [
+			{ "scope": ["public"], "transform": "shs" }
+			],
+			"ws": [
+			{ "scope": ["public"], "transform": "shs", "port": 8989 }
+			]
+		},
+		"outgoing": {
+			"net": [{ "transform": "shs" }],
+			"ws": [{ "transform": "shs" }],
+			"tunnel": [{ "transform": "shs" }]
+		}
+		},
+		ebt: {
+			logging: false, // Opcional: desactiva logs detallados
+			persist: false, // Desactiva persistencia para evitar conflictos
+		},
+		db: {
+			path: baseConfig.path
+		},
+		db2: {
+			path: baseConfig.path
+		}
+	}
+// Make a copy of `ssbConfig` to avoid mutating.
+	const customConfig = config //config;JSON.parse(JSON.stringify(ssbConfig));
   // Only change the config if `--offline` is true.
   if (offline === true) {
     lodash.set(customConfig, "conn.autostart", false);
@@ -160,14 +216,18 @@ export default ({ offline }) => {
       // that app is closed, then Oasis will seamlessly start its own SSB service.
       return new Promise((resolve, reject) => {
         if (clientHandle && clientHandle.closed === false) {
+
+			console.log("Caso a>>>>>>>>", clientHandle.db.query)
           resolve(clientHandle);
         } else {
           ensureConnection(customConfig).then((ssb) => {
             clientHandle = ssb;
+			console.log("Caso b>>>>>>>>", clientHandle.db.query)
             if (closing) {
               cooler.close();
               reject(new Error("Closing Oasis"));
             } else {
+				console.log("Caso c>>>>>>>>", clientHandle.db.query)
               resolve(ssb);
             }
           });
