@@ -18,7 +18,7 @@ import debugRun from "debug";
 import FileType from "file-type";
 import { exec } from "child_process";
 import markdownView from './views/markdown'
-
+import { Status } from "./ssb/status"
 const debug = debugRun("oasis");
 
 const defaultConfig = {};
@@ -544,8 +544,10 @@ router
 
     const packageName = "@fraction/base16-css";
     const filePath = `${packageName}/src/base16-${theme}.css`;
+	const stylePath = path.resolve(__dirname, `../node_modules/${filePath}`);
     ctx.type = "text/css";
-    ctx.body = requireStyle(filePath);
+	console.log("Thie filePath", stylePath)
+    ctx.body = requireStyle(stylePath);
   })
   .get("/custom-style.css", (ctx) => {
     ctx.type = "text/css";
@@ -1084,7 +1086,7 @@ const middleware = [
   async (ctx, next) => {
     const ssb = await cooler.open();
     //@ts-ignore //TODO: remove later
-    const status = await ssb.status();
+    const status = await new Status(ssb);
     const values = Object.values(status.sync.plugins);
     const totalCurrent: number = Object.values(status.sync.plugins).reduce(
       //@ts-ignore //TODO: remove later
