@@ -13,6 +13,7 @@ import ssbRef from "ssb-ref";
 import isSubtopic from "ssb-thread-schema/post/nested-reply/validator";
 import { IVoteRef, message } from "./types/types";
 import { PeerMetadata, About } from 'ssb-typescript';
+import { Backlinks } from "./ssb/backlinks";
 
 
 const isComment = isReply;
@@ -66,6 +67,7 @@ const configure = (...customOptions) =>
 
 export default ({ cooler, isPublic }) => {
 
+	console.log("The model>>>>>>>", cooler)
   /**
    * The SSB-About plugin is a thin wrapper around the SSB-Social-Index plugin.
    * Unfortunately, this plugin has two problems that make it incompatible with
@@ -82,20 +84,28 @@ export default ({ cooler, isPublic }) => {
    */
   const getAbout = async ({ key, feedId }): Promise<string | null> => {
     const ssb = await cooler.open();
-    const source = ssb.backlinks.read({
-      reverse: true,
-      query: [
-        {
-          $filter: {
-            dest: feedId,
-            value: {
-              author: feedId,
-              content: { type: "about", about: feedId },
-            },
-          },
-        },
-      ],
-    });
+	console.log("zz<<<<<<<<<<<<<<Getting the about ssb", ssb.db)
+
+	const options = {
+		reverse: true,
+		query: [
+		  {
+			$filter: {
+			  dest: feedId,
+			  value: {
+				author: feedId,
+				content: { type: "about", about: feedId },
+			  },
+			},
+		  },
+		],
+	  }
+	const source = new Backlinks(ssb).read(options);
+
+	if (!ssb.db.query) {
+	  return null
+	}
+
     return new Promise<string | null>((resolve, reject) =>
       pull(
         source,
@@ -271,60 +281,60 @@ export default ({ cooler, isPublic }) => {
     _startNameWarmup() {
       const abortable = pullAbortable();
       let intervals: NodeJS.Timer[] = [];
-      cooler.open().then((ssb) => {
-        console.time("about-name-warmup"); // benchmark the time it takes to stream all existing about messages
-        pull(
-          ssb.query.read({
-            live: true, // keep streaming new messages as they arrive
-            query: [
-              {
-                $filter: {
-                  // all messages of type:about that have a name field that is typeof string
-                  value: {
-                    content: {
-                      type: "about",
-                      name: { $is: "string" },
-                    },
-                  },
-                },
-              },
-            ],
-          }),
-          abortable,
-          pull.filter((msg: message) => {
-            // backlog of data is done, only new values from now on
-            if (msg.sync && msg.sync === true) {
-              console.timeEnd("about-name-warmup");
-              transposeLookupTable(); // fire once now
-              intervals.push(setInterval(transposeLookupTable, 1000 * 60)); // and then every 60 seconds
-              return false;
-            }
-            // only pick messages about self
-            return msg.value.author == msg.value.content.about;
-          }),
-          pull.drain((msg) => {
-            const name = msg.value.content.name;
-            const ts = msg.value.timestamp;
-            const feed = msg.value.author;
+	  const { where, type, author, live, and, toPullStream } = require('ssb-db2/operators');
 
-            const newEntry = { name, ts };
-            const currentEntry = feeds_to_name[feed];
-            if (typeof currentEntry == "undefined") {
-              dirty = true;
-              feeds_to_name[feed] = newEntry;
-            } else if (currentEntry.ts < ts) {
-              // overwrite entry if it's newer
-              dirty = true;
-              feeds_to_name[feed] = newEntry;
-            }
-          })
-        );
-      });
+	  cooler.open().then((ssb) => {
+		console.time("about-name-warmup"); // Benchmark the time it takes to stream all existing about messages
+		console.log("The db>>>>>>>", ssb.db?.query)
+		if (!ssb.db.query) {
+			console.log("Startwarm, skip query due no db.query.")
+		} else {
+			pull(
+			ssb.db.query(
+				where(
+				and(
+					type('about'), // Filter messages of type "about"
+					(msg) => typeof msg.content.name === 'string' // Ensure `name` is a string
+				)
+				),
+				live({ old: true }) // Stream old and new messages
+			),
+			abortable,
+			pull.filter((msg) => {
+				// Backlog of data is done, only new values from now on
+				if (msg.sync && msg.sync === true) {
+				console.timeEnd("about-name-warmup");
+				transposeLookupTable(); // Fire once now
+				intervals.push(setInterval(transposeLookupTable, 1000 * 60)); // And then every 60 seconds
+				return false;
+				}
+				// Only pick messages about self
+				return msg.value.author === msg.value.content.about;
+			}),
+			pull.drain((msg) => {
+				const name = msg.value.content.name;
+				const ts = msg.value.timestamp;
+				const feed = msg.value.author;
+		
+				const newEntry = { name, ts };
+				const currentEntry = feeds_to_name[feed];
+				if (typeof currentEntry === "undefined") {
+				dirty = true;
+				feeds_to_name[feed] = newEntry;
+				} else if (currentEntry.ts < ts) {
+				// Overwrite entry if it's newer
+				dirty = true;
+				feeds_to_name[feed] = newEntry;
+				}
+			})
+			);
+		}
+	  });
 
       return {
         close: () => {
           abortable.abort();
-          intervals.forEach((i) => clearInterval(i));
+          intervals.forEach((i) => clearInterval(i as any));
         },
       };
     },
@@ -636,9 +646,10 @@ export default ({ cooler, isPublic }) => {
     filter?:Function
   }): Promise<message[]> => {
     const options = configure({ query, index: "DTA" }, customOptions);
-    const source = ssb.backlinks.read(options);
+    const source = new Backlinks(ssb).read(options);
     const basicSocialFilter = await socialFilter({});
 
+	if (!source) return [];
     return new Promise((resolve, reject) => {
       pull(
         source,
@@ -1062,7 +1073,11 @@ export default ({ cooler, isPublic }) => {
         customOptions
       );
 
-      const source = await ssb.query.read(options);
+	  if (!ssb.db.query) {
+		console.log("Skip likes due db.query")
+		return []
+	  }
+      const source = await ssb.db.query(options);
 
       const messages = await new Promise((resolve, reject) => {
         pull(
@@ -1097,41 +1112,73 @@ export default ({ cooler, isPublic }) => {
       return messages;
     },
     search: async ({ query }) => {
-      const ssb = await cooler.open();
+		const ssb = await cooler.open();
 
-      const myFeedId = ssb.id;
+		if (!ssb.db?.query) {
+		  console.warn("`ssb.db.query` is not defined. Returning an empty result.");
+		  return [];
+		}
 
-      const options = configure({
-        query,
-      });
+		const myFeedId = ssb.id;
 
-      const source = await ssb.search.query(options);
-      const basicSocialFilter = await socialFilter({});
+		// Construir la consulta equivalente en ssb-db2
+		const { where, type, live, toPullStream, and } = require('ssb-db2/operators');
 
-      const messages = await new Promise((resolve, reject) => {
-        pull(
-          source,
-          basicSocialFilter,
-          pull.filter(isNotPrivate),
-          pull.take(maxMessages),
-          pull.collect((err, collectedMessages) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(transform(ssb, collectedMessages, myFeedId));
-            }
-          })
-        );
-      });
+		function queryFilter(msg, query) {
+			// Verificar que el mensaje cumpla con múltiples condiciones
+			const text = msg.value.content.text || '';
+			const author = msg.value.author;
+		  
+			// Ejemplo de condiciones basadas en query
+			const matchesText = query.text ? text.toLowerCase().includes(query.text.toLowerCase()) : true;
+			const matchesAuthor = query.author ? author === query.author : true;
+		  
+			// Devuelve true solo si todas las condiciones coinciden
+			return matchesText && matchesAuthor;
+		  }
 
-      return messages;
-    },
+		const source = ssb.db.query(
+		  where(
+			and(
+			  (msg) => query ? queryFilter(msg, query) : true, // Filtrar mensajes según `query`
+			  isNotPrivate // Asegurar que los mensajes no sean privados
+			)
+		  ),
+		  live({ old: true }), // Stream de mensajes antiguos y nuevos si aplica
+		  toPullStream()
+		);
+
+		// Filtro social básico
+		const basicSocialFilter = await socialFilter({});
+
+		const messages = await new Promise((resolve, reject) => {
+		  pull(
+			source,
+			basicSocialFilter,
+			pull.filter(isNotPrivate), // Asegurar mensajes no privados
+			pull.take(maxMessages), // Limitar la cantidad de mensajes
+			pull.collect((err, collectedMessages) => {
+			  if (err) {
+				reject(err);
+			  } else {
+				resolve(transform(ssb, collectedMessages, myFeedId));
+			  }
+			})
+		  );
+		});
+	  
+		return messages;
+	},
+	  
     latest: async () => {
       const ssb = await cooler.open();
 
       const myFeedId = ssb.id;
-
-      const source = ssb.query.read(
+	  if (!ssb.db.query) {
+		console.log("Skip latest due db.query")
+		return []
+	  }
+      const source = ssb.db.query(
         configure({
           query: [
             {
@@ -1171,8 +1218,11 @@ export default ({ cooler, isPublic }) => {
       const ssb = await cooler.open();
 
       const myFeedId = ssb.id;
-
-      const source = ssb.query.read(
+	  if (!ssb.db.query) {
+		console.log("Skip latestExtended due db.query")
+		return []
+	  }
+      const source = ssb.db.query(
         configure({
           query: [
             {
@@ -1217,7 +1267,11 @@ export default ({ cooler, isPublic }) => {
 
       const myFeedId = ssb.id;
 
-      const source = ssb.query.read(
+	  if (!ssb.db.query) {
+		console.log("Skip latestTopics due db.query")
+		return []
+	  }
+      const source = ssb.db.query(
         configure({
           query: [
             {
@@ -1267,7 +1321,16 @@ export default ({ cooler, isPublic }) => {
         private: false,
       });
 
-      const source = ssb.messagesByType(options);
+	  const { where, type, toPullStream } = require('ssb-db2/operators');
+
+	  if (!ssb.db?.query) {
+		console.warn("`ssb.db.query` latestSummaries is not defined. Returning empty source.");
+		return [];
+	  }
+	  const source = ssb.db.query(
+		where(type(options.type)), // Filtrar mensajes por tipo
+		toPullStream()
+	  );
 
       const extendedFilter = await socialFilter({
         following: true,
@@ -1306,7 +1369,11 @@ export default ({ cooler, isPublic }) => {
 
       const myFeedId = ssb.id;
 
-      const source = ssb.query.read(
+	  if (!ssb.db.query) {
+		console.log("Skip latestThreads due db.query")
+		return []
+	  }
+      const source = ssb.db.query(
         configure({
           query: [
             {
@@ -1372,7 +1439,12 @@ export default ({ cooler, isPublic }) => {
 
       const now = new Date();
       const earliest = Number(now) - 1000 * 60 * 60 * 24 * periodDict[period];
-      const source = ssb.query.read(
+
+	  if (!ssb.db.query) {
+		console.log("Skip popular due db.query")
+		return []
+	  }
+      const source = ssb.db.query(
         configure({
           query: [
             {
@@ -1828,8 +1900,29 @@ export default ({ cooler, isPublic }) => {
     channels: async () => {
       const ssb = await cooler.open();
 
-      const source = ssb.createUserStream({ id: ssb.id });
+	  const { where, author, descending, toPullStream, gt } = require('ssb-db2/operators');
 
+	  if (!ssb.db?.query) {
+		console.warn("`ssb.db.query` is not defined. Returning empty source.");
+		return []
+	  } 
+
+	const source = ssb.db.query(
+		where(
+		author(ssb.id), // Filtra mensajes por el autor
+		// gt(timestamp)   // Opcional: Recupera mensajes con timestamp mayor al especificado
+		),
+		descending(), // Ordena de manera descendente (equivalente a `reverse: true`)
+		toPullStream()
+	);
+
+	pull(
+		source,
+		pull.collect((err, messages) => {
+		if (err) console.error(err);
+		else console.log(messages);
+		})
+	);
       const messages = await new Promise<message[]>((resolve, reject) => {
         pull(
           source,
@@ -1880,8 +1973,11 @@ export default ({ cooler, isPublic }) => {
         customOptions
       );
 
-      const source = ssb.backlinks.read(options);
+      const source = new Backlinks(ssb).read(options);
 
+	  if (!ssb.db.query) {
+		return []
+	  }
       const messages = await new Promise((resolve, reject) => {
         pull(
           source,
