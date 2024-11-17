@@ -13,7 +13,6 @@ const plugins = [
 	require("ssb-ebt"),
 	require("ssb-friends"),
 	require("ssb-replication-scheduler"),
-	require("ssb-invite"),
 	require("ssb-lan"),
 	require("ssb-logging"),
 	require("ssb-meme"),

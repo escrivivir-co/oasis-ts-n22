@@ -59,7 +59,7 @@ var config = {
 	  }
 	},
 	ebt: {
-		logging: false, // Opcional: desactiva logs detallados
+		logging: true, // Opcional: desactiva logs detallados
 		persist: false, // Desactiva persistencia para evitar conflictos
 	},
 	db: {
@@ -67,7 +67,10 @@ var config = {
 	},
 	db2: {
 		path: baseConfig.path
-	}
+	},
+	logging: {
+		level: 'verbose', // Cambia a 'debug' para más detalles
+	},
 }
 
 var manifestFile = path.join(config.path, 'manifest.json')
@@ -94,7 +97,6 @@ if (argv[0] == 'start') {
 	.use(require('ssb-conn'))
 	.use(require('ssb-blobs'))
 	.use(require('ssb-threads'))
-	.use(require('ssb-invite'))
 	// Plugins adicionales
 	.use(require('ssb-lan'))
 	.use(require('ssb-search2'))
@@ -110,21 +112,21 @@ if (argv[0] == 'start') {
 	// add third-party plugins (loaded from ~/.ssb/config)
 	require('ssb-plugins').loadUserPlugins(Server, config)
 
-
 	// load config into ssb & start it
 	var server = Server(config)
+	server.logging = config.logging;
 
 	const manifest = server.getManifest();
-		manifest.db = {
-		  ...manifest.db,
-		  query: 'async', // Expone `db.query` como método asíncrono
+	manifest.db = {
+		...manifest.db,
+		query: 'async', // Expone `db.query` como método asíncrono
 	};
 	// generate manifest
 	fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2))
 
 	// show server progress
 	if (process.stdout.isTTY && (config.logging.level != 'info'))
-		if (server.progress) ProgressBar(server.progress)
+	if (server.progress) ProgressBar(server.progress)
 	console.log("The db manifestFile", manifestFile)
 	console.log("The db query", server.db.query)
 

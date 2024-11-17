@@ -11,9 +11,10 @@ import pullSort from "pull-sort";
 import ssbRef from "ssb-ref";
 // HACK: https://github.com/ssbc/ssb-thread-schema/issues/4
 import isSubtopic from "ssb-thread-schema/post/nested-reply/validator";
-import { IVoteRef, message } from "./types/types";
+import { IVoteRef, message } from './types/types';
 import { PeerMetadata, About } from 'ssb-typescript';
 import { Backlinks } from "./ssb/backlinks";
+import { acceptInvite } from "./ssb/invite";
 
 
 const isComment = isReply;
@@ -579,10 +580,23 @@ export default ({ cooler, isPublic }) => {
 
       await ssb.conn.stop();
     },
-    acceptInvite: async (invite) => {
-      const ssb = await cooler.open();
-      return await ssb.invite.accept(invite);
-    },
+	acceptInvite: async (invite) => {
+		console.log("- Start accept invite", invite);
+
+		const ssb = await cooler.open();
+		console.log("\t - Start accept invite: Open cooler", invite);
+
+		try {
+			const res = await acceptInvite(ssb, invite);
+			console.log("The invite proces", res)
+			return res
+		} catch(ex) {
+			console.log("The error on acceptInvite", ex)
+		}
+
+
+	},
+
     // Returns promise, does not wait for rebuild to finish.
     rebuild: async () => {
       const ssb = await cooler.open();
