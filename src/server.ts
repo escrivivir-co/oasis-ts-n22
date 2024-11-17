@@ -114,12 +114,18 @@ if (argv[0] == 'start') {
 	// load config into ssb & start it
 	var server = Server(config)
 
+	const manifest = server.getManifest();
+		manifest.db = {
+		  ...manifest.db,
+		  query: 'async', // Expone `db.query` como método asíncrono
+	};
 	// generate manifest
-	fs.writeFileSync(manifestFile, JSON.stringify(server.getManifest(), null, 2))
+	fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2))
 
 	// show server progress
 	if (process.stdout.isTTY && (config.logging.level != 'info'))
 		if (server.progress) ProgressBar(server.progress)
+	console.log("The db manifestFile", manifestFile)
 	console.log("The db query", server.db.query)
 
 } else {
