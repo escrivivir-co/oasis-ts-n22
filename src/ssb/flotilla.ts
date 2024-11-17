@@ -31,7 +31,7 @@ const plugins = [
 export default (config) => {
   const server = SecretStack( config.caps );
   const walk = (input) => {
-	console.log("wwwwwwwwww--------------------------", server.db)
+	console.log("- Walking flotilla")
     if (Array.isArray(input)) {
       input.forEach(walk);
     } else {
@@ -42,10 +42,7 @@ export default (config) => {
 
   walk(plugins);
 
-  console.log("wwwwwwwwww", server.db)
-
   const c = server({ ...ssbConfig, ...config });
 
-  console.log("wwwwwwwwww", c.db)
   return server({ ...ssbConfig, ...config });
 };

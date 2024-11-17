@@ -73,23 +73,24 @@ const attemptConnection = () =>
       : connect({ remote });
     originalConnect
       .then((ssb) => {
-        debug("Connected to existing Scuttlebutt service over Unix socket");
+        console.log("Connected to existing Scuttlebutt service over Unix socket", (ssb as any)?.db?.query);
+
         resolve(ssb);
       })
       .catch((e) => {
         if (closing) return;
-        debug("Unix socket failed");
+        console.log("Unix socket failed");
         if (e.message !== "could not connect to sbot") {
           throw e;
         }
         connect({})
           .then((ssb) => {
-            log("Connected to existing Scuttlebutt service over TCP socket");
+            console.log("Connected to existing Scuttlebutt service over TCP socket");
             resolve(ssb);
           })
           .catch((e) => {
             if (closing) return;
-            debug("TCP socket failed");
+            console.log("TCP socket failed");
             if (e.message !== "could not connect to sbot") {
               throw e;
             }
@@ -133,8 +134,8 @@ export default ({ offline }) => {
   }
 
   
-
-  var baseConfig = Config("ssb", {})
+  	var baseConfig = Config("ssb", minimist([ 'start' ]))
+  	var baseConfig = Config("ssb", {})
 	var config = {
 		...baseConfig,
 		global: {
@@ -217,19 +218,18 @@ export default ({ offline }) => {
       return new Promise((resolve, reject) => {
         if (clientHandle && clientHandle.closed === false) {
 
-			console.log("Caso a>>>>>>>>", clientHandle.db.query)
-          resolve(clientHandle);
+			console.log("- Ya existe clientHandle, devolviendo")
+          	resolve(clientHandle);
         } else {
-          ensureConnection(customConfig).then((ssb) => {
-            clientHandle = ssb;
-			console.log("Caso b>>>>>>>>", clientHandle.db.query)
-            if (closing) {
-              cooler.close();
-              reject(new Error("Closing Oasis"));
-            } else {
-				console.log("Caso c>>>>>>>>", clientHandle.db.query)
-              resolve(ssb);
-            }
+			ensureConnection(customConfig).then((ssb) => {
+				clientHandle = ssb;
+				console.log("- ensureConnection clientHandle, devolviendo")
+				if (closing) {
+					cooler.close();
+					reject(new Error("Closing Oasis"));
+				} else {
+					resolve(ssb);
+				}
           });
         }
       });

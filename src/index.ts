@@ -546,7 +546,7 @@ router
     const filePath = `${packageName}/src/base16-${theme}.css`;
 	const stylePath = path.resolve(__dirname, `../node_modules/${filePath}`);
     ctx.type = "text/css";
-	console.log("Thie filePath", stylePath)
+	console.log("- Cargando la hoja de estilos")
     ctx.body = requireStyle(stylePath);
   })
   .get("/custom-style.css", (ctx) => {

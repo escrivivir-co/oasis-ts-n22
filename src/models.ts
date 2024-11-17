@@ -67,7 +67,6 @@ const configure = (...customOptions) =>
 
 export default ({ cooler, isPublic }) => {
 
-	console.log("The model>>>>>>>", cooler)
   /**
    * The SSB-About plugin is a thin wrapper around the SSB-Social-Index plugin.
    * Unfortunately, this plugin has two problems that make it incompatible with
@@ -285,58 +284,41 @@ export default ({ cooler, isPublic }) => {
 
 	  cooler.open().then((ssb) => {
 		console.time("about-name-warmup"); // Benchmark the time it takes to stream all existing about messages
-		console.log("The db>>>>>>>", ssb.db?.query)
+		console.log("- Start _startNameWarmup");
+
 		if (!ssb.db.query) {
-			console.log("Startwarm, skip query due no db.query.")
+		  console.log("Startwarm, skip query due no db.query.");
 		} else {
-			pull(
-			ssb.db.query(
-				where(
-				and(
-					type('about'), // Filter messages of type "about"
-					(msg) => typeof msg.content.name === 'string' // Ensure `name` is a string
-				)
-				),
-				live({ old: true }) // Stream old and new messages
-			),
-			abortable,
-			pull.filter((msg) => {
-				// Backlog of data is done, only new values from now on
-				if (msg.sync && msg.sync === true) {
-				console.timeEnd("about-name-warmup");
-				transposeLookupTable(); // Fire once now
-				intervals.push(setInterval(transposeLookupTable, 1000 * 60)); // And then every 60 seconds
-				return false;
-				}
-				// Only pick messages about self
-				return msg.value.author === msg.value.content.about;
-			}),
-			pull.drain((msg) => {
-				const name = msg.value.content.name;
-				const ts = msg.value.timestamp;
-				const feed = msg.value.author;
-		
-				const newEntry = { name, ts };
-				const currentEntry = feeds_to_name[feed];
-				if (typeof currentEntry === "undefined") {
-				dirty = true;
-				feeds_to_name[feed] = newEntry;
-				} else if (currentEntry.ts < ts) {
-				// Overwrite entry if it's newer
-				dirty = true;
-				feeds_to_name[feed] = newEntry;
-				}
-			})
+		  try {
+			// Configura la consulta con operadores
+			const query = where(and(type("about")));
+			const stream = toPullStream(
+			  ssb.db.query(query, live({ meta: {}, old: true }))
 			);
+
+			// Procesa los mensajes del stream
+			pull(
+			  stream,
+			  abortable,
+			  pull.map((msg) => ({
+				...msg,
+				meta: msg.meta || {}, // Verifica y asegura `meta` en cada mensaje.
+			  }))
+			);
+		  } catch (error) {
+			console.error("Error configurando o ejecutando la consulta:", error);
+		  }
 		}
 	  });
 
-      return {
-        close: () => {
-          abortable.abort();
-          intervals.forEach((i) => clearInterval(i as any));
-        },
-      };
+	  // Retorna un objeto con métodos de cierre
+	  return {
+		close: () => {
+		  abortable.abort();
+		  intervals.forEach((i) => clearInterval(i as any));
+		},
+	  };
+
     },
   };
 
